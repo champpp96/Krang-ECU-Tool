@@ -3,9 +3,7 @@ name: Build Android APK
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
+    branches: [main, master]
 
 permissions:
   contents: read
@@ -18,7 +16,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -29,60 +26,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name:       - name: Set up Android SDK
+      - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android packages
-        run: |
-          set -e
-          sdkmanager --update
-          sdkmanager --licenses
-          sdkmanager "platforms;android-35"
-          sdkmanager "build-tools;35.0.0"
-          sdkmanager "platform-tools"
-
-      - name: Extract Android project ZIP
-        run: |
-          ZIP_FILE=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
-
-          if [ -z "$ZIP_FILE" ]; then
-            echo "ERROR: No project ZIP found"
-            exit 1
-          fi
-
-          mkdir extracted
-          unzip -q "$ZIP_FILE" -d extracted
-
-          SETTINGS=$(find extracted -name settings.gradle.kts -print -quit)
-
-          if [ -z "$SETTINGS" ]; then
-            echo "ERROR: settings.gradle.kts not found"
-            exit 1
-          fi
-
-          PROJECT_DIR=$(dirname "$SETTINGS")
-          cp -a "$PROJECT_DIR"/. "$GITHUB_WORKSPACE"/
-
-          test -d app || exit 1
-
+      - name: Accept SDK licenses and install packages
+        run: | yes | sdkmanager --licenses >/dev/null || true sdkmanager --install "platforms;android-35" "build-tools;35.0.0" "platform-tools" 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
 
+      - name: Show build tool versions
+        run: | java -version gradle --version adb version 
       - name: Build debug APK
         run: gradle --no-daemon --stacktrace assembleDebug
 
       - name: Create APK checksum
-        run: |
-          sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
+        run: sha256sum app/build/outputs/apk/debug/app-debug.apk > app/build/outputs/apk/debug/app-debug.apk.sha256
 
-      - name: Upload APK
+      - name: Upload APK and checksum
         uses: actions/upload-artifact@v4
         with:
           name: KrangEcuTool-debug-apk
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            app/build/outputs/apk/debug/app-debug.apk.sha256
-          if-no-files-found: error
+          path: | app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/app-debug.apk.sha256           if-no-files-found: error
           retention-days: 14
